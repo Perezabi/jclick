@@ -5,7 +5,10 @@ const attendanceSchema = new mongoose.Schema({
   teacherId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   students: [{
     studentId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    present: { type: Boolean, default: false }
+    present: { type: Boolean, default: false },
+    status: { type: String, enum: ['Present', 'Absent', 'Leave', ''], default: '' },
+    topicCovered: { type: String, default: '' },
+    reason: { type: String, default: '' }
   }]
 }, { timestamps: true });
 

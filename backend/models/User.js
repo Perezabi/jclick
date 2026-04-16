@@ -18,10 +18,12 @@ const userSchema = new mongoose.Schema({
   // STUDENT FIELDS
   courseName: String,
   batchTime: String,
+  batchDay: [{ type: String, enum: ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] }],
   personalContact: String,
   parentContact: String,
   teacherId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   totalFee: { type: Number, default: 0 }, // ✅ ADDED
+  joiningDate: Date,
 
   // TEACHER FIELDS
   specialization: String,

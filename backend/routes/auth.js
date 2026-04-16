@@ -43,7 +43,7 @@ router.post("/create", auth, async (req, res) => {
 
     const {
       name, email, password, role, 
-      courseName, batchTime, personalContact, parentContact, 
+      courseName, batchTime, batchDay, personalContact, parentContact, 
       teacherId, totalFee, loginTimeFrom, loginTimeTo, 
       specialization, joiningDate
     } = req.body;
@@ -71,10 +71,12 @@ router.post("/create", auth, async (req, res) => {
       ...(role === "student" && {
         courseName: courseName || "",
         batchTime: batchTime || "",
+        batchDay: batchDay || [],
         personalContact: personalContact || "",
         parentContact: parentContact || "",
         teacherId: teacherId || null,
-        totalFee: totalFee ? Number(totalFee) : 0
+        totalFee: totalFee ? Number(totalFee) : 0,
+        joiningDate: joiningDate ? new Date(joiningDate) : new Date()
       }),
       ...(role === "teacher" && {
         specialization: specialization || "",

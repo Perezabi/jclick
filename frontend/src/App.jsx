@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
-import AdminDashboard from './pages/Dashboard';  // Your existing super dashboard
+import Dashboard from './pages/Dashboard';  // Original admin dashboard with all functionality
 import TeacherDashboard from './pages/TeacherDashboard';
 import StudentDashboard from './pages/StudentDashboard';
 
@@ -23,7 +23,7 @@ function App() {
         <Route path="/dashboard" 
           element={
             <ProtectedRoute allowedRoles={['super']}>
-              <AdminDashboard />
+              <Dashboard />
             </ProtectedRoute>
           } 
         />

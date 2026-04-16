@@ -20,6 +20,9 @@ app.use(
 );
 app.use(express.json({ limit: "10mb" }));
 
+// Serve uploaded files statically
+app.use('/api/uploads', express.static('uploads'));
+
 // Database + Super Admin
 mongoose.connect(process.env.MONGO_URL).then(async () => {
   console.log("✅ MongoDB Connected");
