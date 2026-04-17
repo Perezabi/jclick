@@ -2291,7 +2291,7 @@ function Dashboard() {
                               });
                             }
                           }}
-                          className="w-5 h-5 text-purple-600 rounded focus:ring-purple-500"
+                          className="w-5 h-5 flex-shrink-0 text-purple-600 rounded focus:ring-purple-500"
                         />
                         <span className="text-lg capitalize font-medium">
                           {day}
