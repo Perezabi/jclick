@@ -13,6 +13,7 @@ const chapterExamSchema = new mongoose.Schema(
         question: String,
         options: [String],
         correctAnswer: Number, // 0=A, 1=B, etc.
+        marks: { type: Number, default: 1 },
         timeLimit: { type: Number, default: 30 }, // seconds per question
       },
     ],

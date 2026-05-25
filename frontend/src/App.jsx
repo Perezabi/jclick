@@ -3,6 +3,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';  // Original admin dashboard with all functionality
 import TeacherDashboard from './pages/TeacherDashboard';
 import StudentDashboard from './pages/StudentDashboard';
+import CROsDashboard from './pages/CROsDashboard';
 
 function ProtectedRoute({ children, allowedRoles }) {
   const token = localStorage.getItem('token');
@@ -24,6 +25,13 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['super']}>
               <Dashboard />
+            </ProtectedRoute>
+          } 
+        />
+        <Route path="/cros-dashboard" 
+          element={
+            <ProtectedRoute allowedRoles={['super', 'cro']}>
+              <CROsDashboard />
             </ProtectedRoute>
           } 
         />

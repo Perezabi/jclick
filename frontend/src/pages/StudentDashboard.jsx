@@ -10,6 +10,7 @@ function StudentDashboard() {
   const [currentExam, setCurrentExam] = useState(null);
   const [answers, setAnswers] = useState([]);
   const [timeLeft, setTimeLeft] = useState(0);
+  const [totalTime, setTotalTime] = useState(0);
   const [showResults, setShowResults] = useState(false);
   const [results, setResults] = useState(null);
   const [examLoading, setExamLoading] = useState(false);
@@ -26,6 +27,7 @@ function StudentDashboard() {
   const [submissions, setSubmissions] = useState({});
   const [activeTab, setActiveTab] = useState("exams");
   const [selectedTask, setSelectedTask] = useState(null);
+  const [tabLoading, setTabLoading] = useState(false);
 
   useEffect(() => {
     document.body.classList.toggle("dark", darkMode);
@@ -49,7 +51,7 @@ function StudentDashboard() {
 
   const fetchAvailableExams = async () => {
     try {
-      const res = await axios.get(`${API}/exams/available`, {
+      const res = await axios.get(`${API}/exams/available?_t=${Date.now()}`, {
         headers: { Authorization: token },
       });
       setAvailableExams(res.data);
@@ -61,7 +63,7 @@ function StudentDashboard() {
   const fetchMyResults = async () => {
     try {
       setMyResultsLoading(true);
-      const res = await axios.get(`${API}/exams/my-results`, {
+      const res = await axios.get(`${API}/exams/my-results?_t=${Date.now()}`, {
         headers: { Authorization: token },
       });
       setMyResults(res.data || []);
@@ -88,7 +90,9 @@ function StudentDashboard() {
   const startExam = (exam) => {
     setCurrentExam(exam);
     setAnswers(new Array(exam.questions.length).fill(null));
-    setTimeLeft(exam.questions.length * 30 * 1000); // 30s per question
+    const time = exam.questions.length * 30 * 1000;
+    setTimeLeft(time); // 30s per question
+    setTotalTime(time);
     setShowResults(false);
   };
 
@@ -147,13 +151,21 @@ function StudentDashboard() {
   const fetchStudentTasks = async () => {
     try {
       setLoadingTasks(true);
-      const res = await axios.get(`${API}/teacher/student/tasks`, {
+      const res = await axios.get(`${API}/teacher/student/tasks?_t=${Date.now()}`, {
         headers: { Authorization: token },
       });
-      setTasks(res.data || []);
+      
+      // Validate payload to prevent rendering crashes
+      const validatedTasks = (Array.isArray(res.data) ? res.data : []).map(task => ({
+        ...task,
+        submission: task.submission || null,
+        review: task.review || null
+      }));
+      setTasks(validatedTasks);
+      
       // prepare submission map
       const map = {};
-      (res.data || []).forEach((t) => {
+      validatedTasks.forEach((t) => {
         map[t._id] = t.submission?.content || "";
       });
       setSubmissions(map);
@@ -161,6 +173,21 @@ function StudentDashboard() {
       console.error("Task fetch error:", err);
     } finally {
       setLoadingTasks(false);
+    }
+  };
+
+  const handleTabSwitch = async (tab) => {
+    if (activeTab === tab) return;
+    setTabLoading(true);
+    setActiveTab(tab);
+    try {
+      if (tab === "tasks") await fetchStudentTasks();
+      if (tab === "exams") {
+        await fetchAvailableExams();
+        await fetchMyResults();
+      }
+    } finally {
+      setTimeout(() => setTabLoading(false), 300);
     }
   };
 
@@ -234,7 +261,7 @@ function StudentDashboard() {
         className={`flex flex-wrap gap-4 mb-12 ${darkMode ? "bg-white/5 backdrop-blur-sm" : "bg-white/60 backdrop-blur-sm border border-green-200"} p-6 rounded-3xl shadow-2xl`}
       >
         <button
-          onClick={() => setActiveTab("exams")}
+          onClick={() => handleTabSwitch("exams")}
           className={`px-8 py-4 rounded-2xl font-bold text-lg shadow-lg hover:shadow-xl hover:scale-105 transition-all flex-1 md:flex-none ${
             activeTab === "exams"
               ? "bg-gradient-to-r from-emerald-500 to-green-600 text-white"
@@ -246,7 +273,7 @@ function StudentDashboard() {
           My Exams
         </button>
         <button
-          onClick={() => setActiveTab("tasks")}
+          onClick={() => handleTabSwitch("tasks")}
           className={`px-8 py-4 rounded-2xl font-bold text-lg shadow-lg hover:shadow-xl hover:scale-105 transition-all flex-1 md:flex-none ${
             activeTab === "tasks"
               ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white"
@@ -295,12 +322,38 @@ function StudentDashboard() {
           >
             {user.courseName} - {user.batchTime}
           </p>
+
+          {user.status === 'completed' && user.certificateIssued && (
+            <div className="flex flex-col sm:flex-row justify-center items-center gap-4 mt-6">
+              <button 
+                onClick={previewCertificate}
+                className="bg-gradient-to-r from-blue-400 to-blue-600 hover:from-blue-500 hover:to-blue-700 text-white font-bold py-3 px-8 rounded-2xl flex items-center gap-3 shadow-xl transition-all hover:scale-105"
+              >
+                <span className="text-2xl">👁️</span> 
+                <span>Preview Certificate</span>
+              </button>
+              <button 
+                onClick={downloadCertificate}
+                className="bg-gradient-to-r from-yellow-400 to-yellow-600 hover:from-yellow-500 hover:to-yellow-700 text-white font-bold py-3 px-8 rounded-2xl flex items-center gap-3 shadow-xl transition-all hover:scale-105"
+              >
+                <span className="text-2xl">🎓</span> 
+                <span>Download Your Certificate</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* TAB CONTENT */}
         <div className="space-y-12">
-          {/* EXAM SECTION */}
-          {activeTab === "exams" && (
+          {tabLoading ? (
+            <div className="flex flex-col items-center justify-center py-24">
+              <div className={`w-16 h-16 border-4 ${darkMode ? "border-emerald-500" : "border-emerald-600"} border-t-transparent rounded-full animate-spin`}></div>
+              <p className={`mt-6 text-xl font-bold ${darkMode ? "text-gray-300" : "text-gray-600"}`}>Loading {activeTab}...</p>
+            </div>
+          ) : (
+            <>
+              {/* EXAM SECTION */}
+              {activeTab === "exams" && (
             <>
               {/* Available Exams */}
               <div
@@ -640,22 +693,68 @@ function StudentDashboard() {
 
                               {t.review?.feedback && (
                                 <div
-                                  className={`p-6 mt-8 rounded-2xl border shadow-inner ${darkMode ? "bg-green-900/20 border-green-800" : "bg-green-50 border-green-200"}`}
+                                  className={`p-6 mt-8 rounded-2xl border shadow-inner ${
+                                    t.review.mark === undefined || t.review.mark === null
+                                      ? darkMode ? "bg-gray-900/20 border-gray-800" : "bg-gray-50 border-gray-200"
+                                      : t.review.mark < 35
+                                        ? darkMode ? "bg-red-900/20 border-red-800" : "bg-red-50 border-red-200"
+                                        : t.review.mark < 60
+                                          ? darkMode ? "bg-orange-900/20 border-orange-800" : "bg-orange-50 border-orange-200"
+                                          : t.review.mark < 80
+                                            ? darkMode ? "bg-yellow-900/20 border-yellow-800" : "bg-yellow-50 border-yellow-200"
+                                            : t.review.mark < 100
+                                              ? darkMode ? "bg-green-900/20 border-green-800" : "bg-green-50 border-green-200"
+                                              : darkMode ? "bg-blue-900/20 border-blue-800" : "bg-blue-50 border-blue-200"
+                                  }`}
                                 >
                                   <h5
-                                    className={`font-bold text-xl mb-4 flex items-center gap-3 ${darkMode ? "text-green-400" : "text-green-800"}`}
+                                    className={`font-bold text-xl mb-4 flex items-center gap-3 ${
+                                      t.review.mark === undefined || t.review.mark === null
+                                        ? darkMode ? "text-gray-400" : "text-gray-800"
+                                        : t.review.mark < 35
+                                          ? darkMode ? "text-red-400" : "text-red-800"
+                                          : t.review.mark < 60
+                                            ? darkMode ? "text-orange-400" : "text-orange-800"
+                                            : t.review.mark < 80
+                                              ? darkMode ? "text-yellow-400" : "text-yellow-800"
+                                              : t.review.mark < 100
+                                                ? darkMode ? "text-green-400" : "text-green-800"
+                                                : darkMode ? "text-blue-400" : "text-blue-800"
+                                    }`}
                                   >
                                     <span className="text-2xl">👨‍🏫</span> Teacher
                                     Review
                                   </h5>
                                   <p
-                                    className={`text-lg leading-relaxed p-4 rounded-xl ${darkMode ? "bg-black/20 text-green-300" : "bg-white/50 text-green-900"}`}
+                                    className={`text-lg leading-relaxed p-4 rounded-xl ${
+                                      t.review.mark === undefined || t.review.mark === null
+                                        ? darkMode ? "bg-black/20 text-gray-300" : "bg-white/50 text-gray-900"
+                                        : t.review.mark < 35
+                                          ? darkMode ? "bg-black/20 text-red-300" : "bg-white/50 text-red-900"
+                                          : t.review.mark < 60
+                                            ? darkMode ? "bg-black/20 text-orange-300" : "bg-white/50 text-orange-900"
+                                            : t.review.mark < 80
+                                              ? darkMode ? "bg-black/20 text-yellow-300" : "bg-white/50 text-yellow-900"
+                                              : t.review.mark < 100
+                                                ? darkMode ? "bg-black/20 text-green-300" : "bg-white/50 text-green-900"
+                                                : darkMode ? "bg-black/20 text-blue-300" : "bg-white/50 text-blue-900"
+                                    }`}
                                   >
                                     {t.review.feedback}
                                   </p>
-                                  {t.review.mark !== undefined && (
+                                  {t.review.mark !== undefined && t.review.mark !== null && (
                                     <div
-                                      className={`mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-lg shadow-sm ${darkMode ? "bg-green-800 text-green-100" : "bg-green-200 text-green-900"}`}
+                                      className={`mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-lg shadow-sm ${
+                                        t.review.mark < 35
+                                          ? darkMode ? "bg-red-800 text-red-100" : "bg-red-200 text-red-900"
+                                          : t.review.mark < 60
+                                            ? darkMode ? "bg-orange-800 text-orange-100" : "bg-orange-200 text-orange-900"
+                                            : t.review.mark < 80
+                                              ? darkMode ? "bg-yellow-800 text-yellow-100" : "bg-yellow-200 text-yellow-900"
+                                              : t.review.mark < 100
+                                                ? darkMode ? "bg-green-800 text-green-100" : "bg-green-200 text-green-900"
+                                                : darkMode ? "bg-blue-800 text-blue-100" : "bg-blue-200 text-blue-900"
+                                      }`}
                                     >
                                       <span>Score:</span>
                                       <span className="text-2xl">
@@ -860,20 +959,33 @@ function StudentDashboard() {
           {/* Current Exam */}
           {activeTab === "exams" && currentExam && !showResults && (
             <div className="glass-card p-8 max-w-4xl mx-auto">
-              <div className="flex justify-between items-center mb-8">
-                <h3 className="text-3xl font-bold">{currentExam.chapter}</h3>
-                <div className="text-2xl font-mono bg-red-500/20 px-4 py-2 rounded-xl">
-                  {Math.floor(timeLeft / 1000 / 60)}:
-                  {((timeLeft / 1000) % 60).toString().padStart(2, "0")}
+              <div className="mb-8">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-3xl font-bold">{currentExam.chapter}</h3>
+                  <div className={`text-2xl font-mono px-4 py-2 rounded-xl ${timeLeft <= 60000 ? "bg-red-500/20 text-red-500 animate-pulse" : "bg-blue-500/20 text-blue-500"}`}>
+                    {Math.floor(timeLeft / 1000 / 60)}:
+                    {((timeLeft / 1000) % 60).toString().padStart(2, "0")}
+                  </div>
+                </div>
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+                  <div
+                    className={`h-2.5 rounded-full transition-all duration-1000 ${timeLeft <= 60000 ? "bg-red-500" : "bg-blue-500"}`}
+                    style={{ width: `${(timeLeft / totalTime) * 100}%` }}
+                  ></div>
                 </div>
               </div>
 
               <div className="space-y-6 max-h-96 overflow-y-auto">
                 {currentExam.questions.map((q, qIndex) => (
-                  <div key={qIndex} className="glass-card p-6">
-                    <h4 className="font-bold text-xl mb-4">
-                      Q{qIndex + 1}: {q.question}
-                    </h4>
+                  <div key={qIndex} className="glass-card p-6 relative">
+                    <div className="flex justify-between items-start gap-4 mb-4">
+                      <h4 className="font-bold text-xl">
+                        Q{qIndex + 1}: {q.question}
+                      </h4>
+                      <span className={`px-3 py-1 text-sm font-bold rounded-xl whitespace-nowrap ${darkMode ? "bg-emerald-900/40 text-emerald-400" : "bg-emerald-100 text-emerald-700"}`}>
+                        {q.marks || 1} Mark{(q.marks || 1) !== 1 ? 's' : ''}
+                      </span>
+                    </div>
                     <div className="space-y-2">
                       {q.options.map((option, oIndex) => (
                         <button
@@ -931,6 +1043,8 @@ function StudentDashboard() {
                 📚 View More Exams
               </button>
             </div>
+          )}
+            </>
           )}
         </div>
       </div>

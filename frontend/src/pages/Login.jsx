@@ -38,6 +38,7 @@ function Login() {
       if (role === "super") window.location.href = "/dashboard";
       else if (role === "teacher") window.location.href = "/teacher-dashboard";
       else if (role === "student") window.location.href = "/student-dashboard";
+      else if (role === "cro") window.location.href = "/cros-dashboard";
     } catch (err) {
       toast.error(err.response?.data || "Login failed");
     }

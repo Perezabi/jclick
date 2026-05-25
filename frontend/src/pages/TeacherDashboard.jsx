@@ -78,6 +78,7 @@ function TeacherDashboard() {
   const [reportDescription, setReportDescription] = useState("");
   const [loadingReport, setLoadingReport] = useState(false);
   const [savingReport, setSavingReport] = useState(false);
+  const [exportingReport, setExportingReport] = useState(false);
 
   // EXAM STATES
   const [teacherExams, setTeacherExams] = useState([]);
@@ -85,7 +86,7 @@ function TeacherDashboard() {
   const [showExamModal, setShowExamModal] = useState(false);
   const [examForm, setExamForm] = useState({
     chapter: "",
-    questions: [{ question: "", options: ["", "", "", ""], correctAnswer: 0 }],
+    questions: [{ question: "", options: ["", "", "", ""], correctAnswer: 0, marks: 1 }],
   });
   const [selectedStudents, setSelectedStudents] = useState([]);
   const [showEnableModal, setShowEnableModal] = useState(false);
@@ -94,6 +95,11 @@ function TeacherDashboard() {
   const [resultsLoading, setResultsLoading] = useState(false);
   const [resultsExam, setResultsExam] = useState(null);
   const [examResults, setExamResults] = useState([]);
+  const [bulkSelectedStudents, setBulkSelectedStudents] = useState([]);
+  const [certificateMessage, setCertificateMessage] = useState("");
+  const [tabLoading, setTabLoading] = useState(false);
+  const [studentSubTab, setStudentSubTab] = useState("active");
+  const [statusUpdating, setStatusUpdating] = useState(null);
 
   // TASK STATES
   const [tasks, setTasks] = useState([]);
@@ -224,6 +230,7 @@ function TeacherDashboard() {
     selectedStudentId = null,
   ) => {
     try {
+      setExportingReport(true);
       const fromParam = fromDate || new Date().toISOString().split("T")[0];
       const toParam = toDate || new Date().toISOString().split("T")[0];
       const fromTarget = new Date(fromParam);
@@ -410,13 +417,15 @@ function TeacherDashboard() {
     } catch (err) {
       console.error("Export error:", err);
       toast.error("Failed to export tasks & attendance report");
+    } finally {
+      setExportingReport(false);
     }
   };
 
-  const fetchStudents = async () => {
+  const fetchStudents = async (silent = false) => {
     try {
-      setLoading(true);
-      const res = await axios.get(`${API}/teacher/my-students`, {
+      if (!silent) setLoading(true);
+      const res = await axios.get(`${API}/teacher/my-students?_t=${Date.now()}`, {
         headers: { Authorization: token },
         timeout: 15000,
       });
@@ -429,7 +438,7 @@ function TeacherDashboard() {
     } catch (err) {
       toast.error("Failed to load students");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -499,6 +508,7 @@ function TeacherDashboard() {
   // export both attendance & daily report as HTML with colors
   const exportAttendanceToCSV = async (dateParam) => {
     try {
+      setExportingReport(true);
       const targetDate = new Date(dateParam || attendanceDate);
       const dateStr = targetDate.toLocaleDateString();
 
@@ -551,8 +561,8 @@ function TeacherDashboard() {
   </table>`;
 
       // Add Daily Report section
-      const slots = attendanceReportSlots.length
-        ? attendanceReportSlots
+      const slots = reportSlots.length
+        ? reportSlots
         : buildDefaultReportSlots();
       html += `<div style="page-break-before: always; margin-top: 40px;">
     <div class="header" style="margin-bottom: 20px;">
@@ -570,8 +580,8 @@ function TeacherDashboard() {
         html += `<tr><td>${ts.slot}</td><td class="${completedClass}">${completed}</td><td>${ts.description || "-"}</td></tr>`;
       });
 
-      if (attendanceReportDescription) {
-        html += `<tr><td colspan="3"><strong>Notes:</strong> ${attendanceReportDescription}</td></tr>`;
+      if (reportDescription) {
+        html += `<tr><td colspan="3"><strong>Notes:</strong> ${reportDescription}</td></tr>`;
       }
 
       html += `</tbody>
@@ -580,17 +590,20 @@ function TeacherDashboard() {
 </body>
 </html>`;
 
-      downloadHTML(html, `attendance-report-${attendanceDate}.html`);
+      downloadHTML(html, `combined-report-${dateParam || attendanceDate}.html`);
       toast.success("Report exported successfully!");
     } catch (err) {
       console.error("Export error:", err);
       toast.error("Failed to export report");
+    } finally {
+      setExportingReport(false);
     }
   };
 
   // helper: export ONLY attendance rows as HTML with colors
   const exportAttendanceOnlyCSV = async (dateParam) => {
     try {
+      setExportingReport(true);
       const targetDate = new Date(dateParam || attendanceDate);
       const dateStr = targetDate.toLocaleDateString();
 
@@ -648,6 +661,8 @@ function TeacherDashboard() {
     } catch (err) {
       console.error("Export error:", err);
       toast.error("Failed to export report");
+    } finally {
+      setExportingReport(false);
     }
   };
 
@@ -659,6 +674,7 @@ function TeacherDashboard() {
     }
     try {
       setLoadingAttendance(true);
+      setExportingReport(true);
       const res = await axios.get(`${API}/teacher/attendance/range`, {
         params: { from: attendanceFrom, to: attendanceTo },
         headers: { Authorization: token },
@@ -829,12 +845,14 @@ function TeacherDashboard() {
       toast.error("Failed to export range");
     } finally {
       setLoadingAttendance(false);
+      setExportingReport(false);
     }
   };
 
   // export only daily report as HTML with colors
   const exportDailyReportCSV = async (dateParam) => {
     try {
+      setExportingReport(true);
       const targetDate = new Date(dateParam || reportDate);
       const dateStr = targetDate.toLocaleDateString();
       const slots = reportSlots.length
@@ -901,12 +919,15 @@ function TeacherDashboard() {
     } catch (err) {
       console.error("Daily report export error", err);
       toast.error("Failed to export report");
+    } finally {
+      setExportingReport(false);
     }
   };
 
   // export a single student's attendance as HTML with colors
   const exportSingleStudentCSV = async (student) => {
     try {
+      setExportingReport(true);
       const dateStr = new Date(attendanceDate).toLocaleDateString();
       const status = student.attendance?.present ? "Present" : "Absent";
       const statusClass = student.attendance?.present ? "present" : "absent";
@@ -978,12 +999,15 @@ function TeacherDashboard() {
     } catch (err) {
       console.error("Single student export error", err);
       toast.error("Failed to export report");
+    } finally {
+      setExportingReport(false);
     }
   };
 
   // export student's full details with attendance and exam marks
   const exportStudentFullDetails = async (student) => {
     try {
+      setExportingReport(true);
       // Fetch student's detailed information from backend
       const res = await axios.get(
         `${API}/teacher/student-details/${student._id}`,
@@ -993,6 +1017,8 @@ function TeacherDashboard() {
       );
 
       const data = res.data;
+      const examSum = data.exams ? data.exams.reduce((sum, e) => sum + Number(e.score), 0) : 0;
+      const overallAvg = data.exams && data.exams.length > 0 ? (examSum / data.exams.length).toFixed(2) : 'N/A';
       const currentDate = new Date().toLocaleDateString("en-GB");
 
       let html = `<!DOCTYPE html>
@@ -1121,7 +1147,7 @@ function TeacherDashboard() {
     }
     .stats {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr 1fr;
       gap: 15px;
       margin-bottom: 20px;
     }
@@ -1216,6 +1242,10 @@ function TeacherDashboard() {
         <div class="stat-value">${data.exams.length}</div>
         <div class="stat-label">Exams Taken</div>
       </div>
+      <div class="stat-box">
+        <div class="stat-value">${overallAvg}${overallAvg !== 'N/A' ? '%' : ''}</div>
+        <div class="stat-label">Average Score</div>
+      </div>
     </div>
   </div>
 
@@ -1292,12 +1322,76 @@ function TeacherDashboard() {
     } catch (err) {
       console.error("Export error:", err);
       toast.error(err.response?.data || "Failed to export student details");
+    } finally {
+      setExportingReport(false);
     }
+  };
+
+  const generateCertificatesHTML = (studentList, customMessage) => {
+    const certsHtml = studentList.map(student => `
+      <div class="certificate-wrapper">
+        <div class="certificate">
+          <div class="badge">🎓</div>
+          <div class="header">Certificate of Completion</div>
+          <div class="subheader">This is to proudly certify that</div>
+          <div class="name">${student.name}</div>
+          <div class="text">has successfully completed the comprehensive training program for</div>
+          <div class="course">${student.courseName || 'IT Training Program'}</div>
+          <div class="text">demonstrating outstanding dedication, skill, and professional excellence<br>throughout the duration of the course.</div>
+          ${customMessage ? `<div class="text" style="font-style: italic; color: #065f46; margin-top: 10px; font-weight: bold;">"${customMessage}"</div>` : ''}
+          <div class="footer">
+            <div class="signature-block">
+              <div class="signature">${new Date().toLocaleDateString("en-GB")}</div>
+              <div class="signature-title">Date of Issue</div>
+            </div>
+            <div class="signature-block">
+              <div class="signature">JClick Solutions</div>
+              <div class="signature-title">Authorized Signatory</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `).join("");
+
+    return `<!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>Certificates</title>
+      <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@300;400;600&display=swap');
+        body { font-family: 'Montserrat', sans-serif; text-align: center; background: #f0fdf4; padding: 20px; display: flex; flex-direction: column; align-items: center; margin: 0; }
+        .certificate-wrapper { background: white; padding: 15px; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); max-width: 900px; width: 100%; box-sizing: border-box; margin-bottom: 30px; page-break-after: always; }
+        .certificate-wrapper:last-child { page-break-after: auto; }
+        .certificate { border: 8px double #10b981; padding: 50px 40px; text-align: center; position: relative; background: #fff; }
+        .header { font-family: 'Cinzel', serif; font-size: 48px; font-weight: bold; color: #065f46; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 2px; }
+        .subheader { font-size: 20px; color: #666; margin-bottom: 40px; font-weight: 300; text-transform: uppercase; letter-spacing: 1px; }
+        .name { font-family: 'Cinzel', serif; font-size: 42px; font-weight: bold; color: #10b981; margin-bottom: 20px; border-bottom: 2px solid #10b981; display: inline-block; padding: 0 40px 10px; }
+        .text { font-size: 18px; color: #444; margin-bottom: 30px; line-height: 1.6; }
+        .course { font-size: 28px; font-weight: 600; color: #059669; margin-bottom: 40px; padding: 15px; background: #f0fdf4; border-radius: 8px; display: inline-block; }
+        .footer { display: flex; justify-content: space-between; margin-top: 60px; padding: 0 40px; }
+        .signature-block { text-align: center; }
+        .signature { font-family: 'Cinzel', serif; font-size: 20px; color: #065f46; border-bottom: 1px solid #666; padding-bottom: 5px; margin-bottom: 10px; width: 220px; margin-left: auto; margin-right: auto; }
+        .signature-title { font-size: 14px; color: #666; text-transform: uppercase; letter-spacing: 1px; }
+        .badge { position: absolute; top: 40px; right: 40px; width: 100px; height: 100px; background: #10b981; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 40px; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.4); border: 4px solid #fff; outline: 2px solid #10b981; }
+        @media print {
+          body { background: white; padding: 0; }
+          .certificate-wrapper { box-shadow: none; border-radius: 0; padding: 0; margin-bottom: 0; }
+        }
+      </style>
+    </head>
+    <body>
+      ${certsHtml}
+      <script>
+        setTimeout(() => { window.print(); }, 500);
+      </script>
+    </body>
+    </html>`;
   };
 
   const fetchTeacherExams = async () => {
     try {
-      const res = await axios.get(`${API}/exams/teacher`, {
+      const res = await axios.get(`${API}/exams/teacher?_t=${Date.now()}`, {
         headers: { Authorization: token },
       });
       setTeacherExams(res.data);
@@ -1311,7 +1405,7 @@ function TeacherDashboard() {
       setResultsExam(exam);
       setShowResultsModal(true);
       setResultsLoading(true);
-      const res = await axios.get(`${API}/exams/results/${exam._id}`, {
+      const res = await axios.get(`${API}/exams/results/${exam._id}?_t=${Date.now()}`, {
         headers: { Authorization: token },
       });
       setExamResults(res.data || []);
@@ -1361,8 +1455,8 @@ function TeacherDashboard() {
   const fetchTasks = async (studentId = "") => {
     try {
       setLoadingTasks(true);
-      let url = `${API}/teacher/tasks`;
-      if (studentId) url += `?studentId=${studentId}`;
+      let url = `${API}/teacher/tasks?_t=${Date.now()}`;
+      if (studentId) url += `&studentId=${studentId}`;
       const res = await axios.get(url, { headers: { Authorization: token } });
       setTasks(res.data || []);
     } catch (err) {
@@ -1392,11 +1486,16 @@ function TeacherDashboard() {
   const openReview = (task) => {
     setReviewingTask(task);
     setReviewFeedback(task.review?.feedback || "");
-    setReviewMark(task.review?.mark ?? "");
+    setReviewMark(task.review?.mark !== undefined && task.review.mark !== null ? task.review.mark : "");
   };
 
   const submitReview = async () => {
     if (!reviewingTask) return;
+    if (reviewMark === "" || !reviewFeedback.trim()) {
+      toast.error("Please provide both mark and feedback");
+      return;
+    }
+
     try {
       const res = await axios.post(
         `${API}/teacher/tasks/${reviewingTask._id}/review`,
@@ -1528,7 +1627,7 @@ function TeacherDashboard() {
       ...prev,
       questions: [
         ...prev.questions,
-        { question: "", options: ["", "", "", ""], correctAnswer: 0 },
+        { question: "", options: ["", "", "", ""], correctAnswer: 0, marks: 1 },
       ],
     }));
   };
@@ -1544,7 +1643,7 @@ function TeacherDashboard() {
       setExamForm({
         chapter: "",
         questions: [
-          { question: "", options: ["", "", "", ""], correctAnswer: 0 },
+          { question: "", options: ["", "", "", ""], correctAnswer: 0, marks: 1 },
         ],
       });
       fetchTeacherExams();
@@ -1575,6 +1674,89 @@ function TeacherDashboard() {
       toast.error("Failed to enable students");
     }
   };
+  
+  const handleBulkMarkCompleted = async () => {
+    if (!window.confirm(`Are you sure you want to mark ${bulkSelectedStudents.length} students as completed? This will issue certificates to all of them.`)) return;
+    try {
+      setStudents(prev => prev.map(s => bulkSelectedStudents.includes(s._id) ? { ...s, status: "completed", certificateIssued: true, certificateDate: new Date() } : s));
+      
+      await Promise.all(
+        bulkSelectedStudents.map((id) =>
+          axios.put(
+            `${API}/users/${id}`,
+            { status: "completed", certificateIssued: true, certificateDate: new Date(), certificateMessage },
+            { headers: { Authorization: token } }
+          )
+        )
+      );
+
+      const selectedObjects = students.filter(s => bulkSelectedStudents.includes(s._id));
+      const html = generateCertificatesHTML(selectedObjects, certificateMessage);
+      downloadHTML(html, `Bulk_Certificates_${new Date().toISOString().split('T')[0]}.html`);
+
+      toast.success(`${bulkSelectedStudents.length} students marked as completed and certificates exported!`);
+      setBulkSelectedStudents([]);
+      setCertificateMessage("");
+      await fetchStudents(true);
+    } catch (err) {
+      toast.error("Failed to update some students");
+      await fetchStudents(true);
+    }
+  };
+
+  const markStudentAsOld = async (id) => {
+    if (!window.confirm("Are you sure you want to move this student to old students?")) return;
+    try {
+      setStatusUpdating(id);
+      setStudents(prev => prev.map(s => s._id === id ? { ...s, status: "old" } : s));
+      if (selectedStudent?._id === id) setSelectedStudent(prev => ({...prev, status: "old"}));
+      
+      await axios.put(`${API}/users/${id}`, { status: "old" }, { headers: { Authorization: token } });
+      toast.success("Student moved to old students!");
+      await fetchStudents(true);
+    } catch(err) {
+      toast.error("Failed to update status");
+      await fetchStudents(true);
+    } finally {
+      setStatusUpdating(null);
+    }
+  };
+
+  const markStudentAsActive = async (id) => {
+    if (!window.confirm("Are you sure you want to reactivate this student?")) return;
+    try {
+      setStatusUpdating(id);
+      setStudents(prev => prev.map(s => s._id === id ? { ...s, status: "active" } : s));
+      if (selectedStudent?._id === id) setSelectedStudent(prev => ({...prev, status: "active"}));
+      
+      await axios.put(`${API}/users/${id}`, { status: "active" }, { headers: { Authorization: token } });
+      toast.success("Student reactivated!");
+      await fetchStudents(true);
+    } catch(err) {
+      toast.error("Failed to update status");
+      await fetchStudents(true);
+    } finally {
+      setStatusUpdating(null);
+    }
+  };
+
+  const markStudentAsCompleted = async (id) => {
+    if (!window.confirm("Are you sure you want to mark this student as completed? This will issue a certificate.")) return;
+    try {
+      setStatusUpdating(id);
+      setStudents(prev => prev.map(s => s._id === id ? { ...s, status: "completed", certificateIssued: true, certificateDate: new Date() } : s));
+      if (selectedStudent?._id === id) setSelectedStudent(prev => ({...prev, status: "completed", certificateIssued: true, certificateDate: new Date()}));
+      
+      await axios.put(`${API}/users/${id}`, { status: "completed", certificateIssued: true, certificateDate: new Date() }, { headers: { Authorization: token } });
+      toast.success("Student marked as completed!");
+      await fetchStudents(true);
+    } catch(err) {
+      toast.error("Failed to update status");
+      await fetchStudents(true);
+    } finally {
+      setStatusUpdating(null);
+    }
+  };
 
   const openStudentModal = (student, edit = false) => {
     setSelectedStudent(student);
@@ -1583,10 +1765,23 @@ function TeacherDashboard() {
     setShowStudentModal(true);
   };
 
-  const filteredStudents = students.filter(
+  const handleTabSwitch = (tabId) => {
+    if (activeTab === tabId) return;
+    setTabLoading(true);
+    setActiveTab(tabId);
+    setTimeout(() => setTabLoading(false), 300);
+  };
+
+  const searchFilteredStudents = students.filter(
     (student) =>
-      student.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      student.courseName?.toLowerCase().includes(searchTerm.toLowerCase()),
+      (student?.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (student?.courseName || "").toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const filteredStudents = searchFilteredStudents.filter(s => 
+    activeTab === "students" 
+      ? (studentSubTab === "active" ? (s.status !== 'completed' && s.status !== 'old') : (s.status === 'completed' || s.status === 'old'))
+      : (s.status !== 'completed' && s.status !== 'old')
   );
 
   if (loading) {
@@ -1640,9 +1835,11 @@ function TeacherDashboard() {
                   {teacherName}'s Dashboard
                 </h1>
                 <p
-                  className={`text-xl ${darkMode ? "text-gray-400" : "text-gray-700"}`}
+                  className={`text-xl flex gap-3 items-center ${darkMode ? "text-gray-400" : "text-gray-700"}`}
                 >
-                  No. of students: {students.length}
+                  <span>Students: {students.length}</span>
+                  <span className="text-gray-300 dark:text-gray-600">|</span>
+                  <span>Exams: {teacherExams.length}</span>
                 </p>
               </div>
             </div>
@@ -1685,7 +1882,7 @@ function TeacherDashboard() {
             ].map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => handleTabSwitch(tab.id)}
                 className={`p-6 rounded-2xl font-bold text-lg transition-all flex flex-col items-center gap-2 ${
                   activeTab === tab.id
                     ? darkMode
@@ -1703,19 +1900,60 @@ function TeacherDashboard() {
           </div>
         </div>
 
-        {/* STUDENTS TAB */}
-        {activeTab === "students" && (
+        {tabLoading ? (
+          <div className="flex flex-col items-center justify-center py-32">
+            <div className={`w-16 h-16 border-4 ${darkMode ? "border-green-500" : "border-green-600"} border-t-transparent rounded-full animate-spin`}></div>
+            <p className={`mt-6 text-xl font-bold ${darkMode ? "text-gray-300" : "text-gray-600"}`}>Loading {activeTab}...</p>
+          </div>
+        ) : (
+          <>
+            {/* STUDENTS TAB */}
+            {activeTab === "students" && (
           <div
             className={`${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-green-200"} backdrop-blur-xl border rounded-3xl p-8 shadow-2xl`}
           >
-            <div className="flex flex-col md:flex-row gap-4 mb-8">
-              <input
-                type="text"
-                placeholder="Search students..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className={`flex-1 p-4 ${darkMode ? "bg-gray-700 border-gray-600 text-white placeholder-gray-400" : "bg-green-50 border-green-300 text-gray-900 placeholder-gray-600"} border rounded-2xl focus:ring-4 ${darkMode ? "focus:ring-green-600/50" : "focus:ring-green-400/50"}`}
-              />
+            <div className="flex flex-col lg:flex-row gap-4 mb-8 items-start lg:items-center justify-between">
+              <div className={`flex gap-2 p-1.5 rounded-2xl w-full lg:w-auto ${darkMode ? "bg-gray-700" : "bg-green-100"}`}>
+                <button 
+                  onClick={() => setStudentSubTab("active")}
+                  className={`flex-1 lg:flex-none px-6 py-2.5 rounded-xl font-bold transition-all shadow-sm ${studentSubTab === 'active' ? 'bg-green-600 text-white shadow-green-600/30' : darkMode ? 'text-gray-300 hover:bg-white/5' : 'text-gray-600 hover:bg-white'}`}
+                >
+                  Active Students
+                </button>
+                <button 
+                  onClick={() => setStudentSubTab("old")}
+                  className={`flex-1 lg:flex-none px-6 py-2.5 rounded-xl font-bold transition-all shadow-sm ${studentSubTab === 'old' ? 'bg-green-600 text-white shadow-green-600/30' : darkMode ? 'text-gray-300 hover:bg-white/5' : 'text-gray-600 hover:bg-white'}`}
+                >
+                  Old Students
+                </button>
+              </div>
+
+              <div className="flex flex-col md:flex-row gap-4 w-full lg:w-auto flex-1 lg:justify-end">
+                <input
+                  type="text"
+                  placeholder="Search students..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className={`w-full md:w-64 lg:w-80 p-3.5 ${darkMode ? "bg-gray-700 border-gray-600 text-white placeholder-gray-400" : "bg-green-50 border-green-300 text-gray-900 placeholder-gray-600"} border rounded-2xl focus:ring-4 ${darkMode ? "focus:ring-green-600/50" : "focus:ring-green-400/50"} outline-none transition-all`}
+                />
+                {bulkSelectedStudents.length > 0 && (
+                  <div className="flex flex-col md:flex-row items-center gap-3 w-full md:w-auto">
+                    <input 
+                      type="text"
+                      placeholder="Custom Certificate Message..."
+                      value={certificateMessage}
+                      onChange={(e) => setCertificateMessage(e.target.value)}
+                      className={`w-full md:w-auto p-3.5 rounded-2xl border outline-none ${darkMode ? "bg-gray-700 border-gray-600 text-white placeholder-gray-400" : "bg-white border-gray-300 text-gray-900"}`}
+                    />
+                    <button 
+                      onClick={handleBulkMarkCompleted} 
+                      className="w-full md:w-auto bg-gradient-to-r from-emerald-500 to-green-600 text-white font-bold py-3.5 px-6 rounded-2xl shadow-lg transition-all whitespace-nowrap"
+                    >
+                      🎓 Mark {bulkSelectedStudents.length} Completed & Export
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
             {filteredStudents.length === 0 ? (
               <div className="text-center py-12">
@@ -1738,8 +1976,16 @@ function TeacherDashboard() {
                     <tr
                       className={`${darkMode ? "bg-gray-700" : "bg-green-100"} rounded-2xl`}
                     >
+                      <th className={`p-4 rounded-l-2xl w-12 ${darkMode ? "text-green-400" : "text-green-700"}`}>
+                        <input 
+                          type="checkbox"
+                          checked={filteredStudents.length > 0 && bulkSelectedStudents.length === filteredStudents.length}
+                          onChange={e => setBulkSelectedStudents(e.target.checked ? filteredStudents.map(s => s._id) : [])}
+                          className="w-4 h-4 accent-green-600 cursor-pointer"
+                        />
+                      </th>
                       <th
-                        className={`p-4 rounded-l-2xl ${darkMode ? "text-green-400" : "text-green-700"}`}
+                        className={`p-4 ${darkMode ? "text-green-400" : "text-green-700"}`}
                       >
                         Name
                       </th>
@@ -1761,10 +2007,28 @@ function TeacherDashboard() {
                         key={student._id}
                         className={`${darkMode ? "border-gray-700 hover:bg-gray-700/50" : "border-green-100 hover:bg-green-50"} border-b`}
                       >
+                        <td className="p-4">
+                          <input 
+                            type="checkbox"
+                            checked={bulkSelectedStudents.includes(student._id)}
+                            onChange={e => {
+                              if (e.target.checked) setBulkSelectedStudents([...bulkSelectedStudents, student._id]);
+                              else setBulkSelectedStudents(bulkSelectedStudents.filter(id => id !== student._id));
+                            }}
+                            className="w-4 h-4 accent-green-600 cursor-pointer"
+                          />
+                        </td>
                         <td
                           className={`p-4 font-semibold capitalize ${darkMode ? "text-gray-300" : "text-gray-900"}`}
                         >
-                          {student.name}
+                          <div className="flex items-center gap-2">
+                            {student.name}
+                            {(student.status === 'completed' || student.status === 'old') && (
+                              <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${student.status === 'old' ? (darkMode ? "bg-orange-500/20 text-orange-400" : "bg-orange-100 text-orange-600") : (darkMode ? "bg-green-500/20 text-green-400" : "bg-green-100 text-green-600")}`}>
+                                {student.status === 'completed' ? 'COMPLETED' : 'OLD'}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td
                           className={`p-4 capitalize ${darkMode ? "text-gray-300" : "text-gray-900"}`}
@@ -1776,15 +2040,29 @@ function TeacherDashboard() {
                             <button
                               onClick={() => openStudentModal(student)}
                               className={`p-2 ${darkMode ? "bg-blue-900/50 hover:bg-blue-900/70 text-blue-400" : "bg-blue-100 hover:bg-blue-200 text-blue-600"} rounded-xl`}
+                              title="View Details"
                             >
                               <FaEye size={16} />
                             </button>
                             <button
                               onClick={() => exportStudentFullDetails(student)}
-                              className={`p-2 ${darkMode ? "bg-red-900/50 hover:bg-red-900/70 text-red-400" : "bg-red-100 hover:bg-red-200 text-red-600"} rounded-xl`}
+                              disabled={exportingReport}
+                              className={`p-2 ${darkMode ? "bg-red-900/50 hover:bg-red-900/70 text-red-400" : "bg-red-100 hover:bg-red-200 text-red-600"} rounded-xl disabled:opacity-50`}
                               title="Export student full details"
                             >
                               <FaDownload size={16} />
+                            </button>
+                            <button
+                              onClick={() => student.status === 'completed' || student.status === 'old' ? markStudentAsActive(student._id) : markStudentAsOld(student._id)}
+                          disabled={statusUpdating === student._id}
+                          className={`p-2 rounded-xl transition-colors ${darkMode ? "bg-orange-900/50 hover:bg-orange-900/70 text-orange-400" : "bg-orange-100 hover:bg-orange-200 text-orange-600"} ${statusUpdating === student._id ? "opacity-50 cursor-not-allowed" : ""}`}
+                              title={student.status === 'completed' || student.status === 'old' ? "Re-activate Student" : "Move to Old"}
+                            >
+                          {statusUpdating === student._id ? (
+                            <div className={`w-4 h-4 border-2 ${darkMode ? "border-orange-400" : "border-orange-600"} border-t-transparent rounded-full animate-spin`}></div>
+                          ) : (
+                            student.status === 'completed' || student.status === 'old' ? "🔄" : "📦"
+                          )}
                             </button>
                           </div>
                         </td>
@@ -1861,13 +2139,22 @@ function TeacherDashboard() {
                     >
                       Export selected day:
                     </span>
-                    <button
-                      onClick={() => exportAttendanceOnlyCSV(attendanceDate)}
-                      disabled={students.length === 0}
-                      className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-bold py-2 px-4 rounded-xl shadow transition-all flex items-center gap-2 text-sm"
-                    >
-                      <FaFilePdf /> Export Day
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => exportAttendanceOnlyCSV(attendanceDate)}
+                        disabled={students.length === 0 || exportingReport}
+                        className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-bold py-2 px-4 rounded-xl shadow transition-all flex items-center gap-2 text-sm"
+                      >
+                        <FaFilePdf /> {exportingReport ? "Exporting..." : "Export Day"}
+                      </button>
+                      <button
+                        onClick={() => exportAttendanceToCSV(attendanceDate)}
+                        disabled={students.length === 0 || exportingReport}
+                        className="bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white font-bold py-2 px-4 rounded-xl shadow transition-all flex items-center gap-2 text-sm"
+                      >
+                        <FaFilePdf /> {exportingReport ? "Exporting..." : "Export Combined"}
+                      </button>
+                    </div>
                   </div>
                   <hr
                     className={`${darkMode ? "border-gray-700" : "border-gray-200"}`}
@@ -1905,11 +2192,12 @@ function TeacherDashboard() {
                       disabled={
                         !attendanceFrom ||
                         !attendanceTo ||
-                        students.length === 0
+                        students.length === 0 ||
+                        exportingReport
                       }
                       className="w-full md:w-auto bg-gradient-to-r from-blue-500 to-indigo-600 disabled:opacity-50 text-white font-bold py-2 px-4 rounded-xl shadow transition-all flex items-center justify-center gap-2 text-sm"
                     >
-                      <FaFilePdf /> Export Range
+                      <FaFilePdf /> {exportingReport ? "Exporting..." : "Export Range"}
                     </button>
                   </div>
                 </div>
@@ -1953,8 +2241,13 @@ function TeacherDashboard() {
                     <div className="w-20 h-20 bg-gradient-to-r from-blue-500 to-purple-500 rounded-2xl mx-auto mb-4 flex items-center justify-center text-xl font-bold">
                       {student.name.charAt(0).toUpperCase()}
                     </div>
-                    <h3 className="font-bold text-xl mb-2 text-center capitalize">
+                    <h3 className="font-bold text-xl mb-2 text-center capitalize flex items-center justify-center gap-2">
                       {student.name}
+                      {(student.status === 'completed' || student.status === 'old') && (
+                        <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${student.status === 'old' ? (darkMode ? "bg-orange-500/20 text-orange-400" : "bg-orange-100 text-orange-600") : (darkMode ? "bg-green-500/20 text-green-400" : "bg-green-100 text-green-600")}`}>
+                          {student.status === 'completed' ? 'COMPLETED' : 'OLD'}
+                        </span>
+                      )}
                     </h3>
                     <p
                       className={`mb-4 text-center capitalize ${darkMode ? "text-gray-400" : "text-gray-600"}`}
@@ -1977,7 +2270,7 @@ function TeacherDashboard() {
                                 "Present",
                               )
                             }
-                            className="accent-green-500 w-4 h-4"
+                            className="accent-green-500 w-5 h-5 cursor-pointer transition-transform hover:scale-110"
                           />{" "}
                           Present
                         </label>
@@ -1995,7 +2288,7 @@ function TeacherDashboard() {
                                 "Absent",
                               )
                             }
-                            className="accent-red-500 w-4 h-4"
+                            className="accent-red-500 w-5 h-5 cursor-pointer transition-transform hover:scale-110"
                           />{" "}
                           Absent
                         </label>
@@ -2013,7 +2306,7 @@ function TeacherDashboard() {
                                 "Leave",
                               )
                             }
-                            className="accent-blue-500 w-4 h-4"
+                            className="accent-blue-500 w-5 h-5 cursor-pointer transition-transform hover:scale-110"
                           />{" "}
                           Leave
                         </label>
@@ -2053,9 +2346,10 @@ function TeacherDashboard() {
 
                       <button
                         onClick={() => exportSingleStudentCSV(student)}
-                        className={`w-full py-2 px-4 rounded-xl flex items-center justify-center gap-2 mt-2 ${darkMode ? "bg-red-500/20 hover:bg-red-500/40 text-red-300 hover:text-white" : "bg-red-100 hover:bg-red-200 text-red-600 hover:text-red-700"}`}
+                        disabled={exportingReport}
+                        className={`w-full py-2 px-4 rounded-xl flex items-center justify-center gap-2 mt-2 ${darkMode ? "bg-red-500/20 hover:bg-red-500/40 text-red-300 hover:text-white" : "bg-red-100 hover:bg-red-200 text-red-600 hover:text-red-700"} disabled:opacity-50`}
                       >
-                        <FaFilePdf /> Export
+                        <FaFilePdf /> {exportingReport ? "Exporting..." : "Export"}
                       </button>
                     </div>
                   </div>
@@ -2118,17 +2412,17 @@ function TeacherDashboard() {
               <div className="flex flex-col md:flex-row gap-2">
                 <button
                   onClick={() => exportDailyReportCSV(reportDate)}
-                  disabled={reportSlots.length === 0 && !reportDescription}
+                  disabled={(reportSlots.length === 0 && !reportDescription) || exportingReport}
                   className="bg-gradient-to-r from-purple-500 to-pink-600 hover:from-pink-600 hover:to-purple-700 disabled:opacity-50 text-white font-bold py-3 px-5 rounded-2xl shadow-xl hover:shadow-2xl transition-all flex items-center justify-center gap-2"
                 >
-                  <FaFilePdf /> Export Report
+                  <FaFilePdf /> {exportingReport ? "Exporting..." : "Export Report"}
                 </button>
                 <button
                   onClick={() => exportAttendanceToCSV(reportDate)}
-                  disabled={students.length === 0}
+                  disabled={students.length === 0 || exportingReport}
                   className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 disabled:opacity-50 text-white font-bold py-3 px-5 rounded-2xl shadow-xl hover:shadow-2xl transition-all flex items-center justify-center gap-2"
                 >
-                  <FaFilePdf /> Export Combined
+                  <FaFilePdf /> {exportingReport ? "Exporting..." : "Export Combined"}
                 </button>
               </div>
             </div>
@@ -2167,7 +2461,7 @@ function TeacherDashboard() {
                               };
                               setReportSlots(next);
                             }}
-                            className="w-5 h-5 rounded"
+                            className="w-6 h-6 rounded cursor-pointer accent-emerald-500 transition-transform hover:scale-110"
                           />
                           <span className="font-semibold">{ts.slot}</span>
                         </label>
@@ -2235,11 +2529,13 @@ function TeacherDashboard() {
                   onChange={(e) =>
                     setTaskForm({ ...taskForm, studentId: e.target.value })
                   }
-                  className={`p-3 rounded-2xl border ${darkMode ? "bg-white/10 border-white/20 text-white" : "bg-white border-blue-300 text-gray-900"}`}
+                  className={`p-3 rounded-2xl border outline-none transition-all cursor-pointer ${darkMode ? "bg-white/10 border-white/20 text-white hover:bg-white/20 focus:ring-2 focus:ring-blue-500/50" : "bg-white border-blue-300 text-gray-900 hover:border-blue-400 focus:ring-2 focus:ring-blue-500/50"}`}
                 >
-                  <option value="">Choose student</option>
+                  <option value="" className={darkMode ? "bg-gray-800 text-white" : "bg-white text-gray-900"}>
+                    Choose student
+                  </option>
                   {students.map((s) => (
-                    <option key={s._id} value={s._id}>
+                    <option key={s._id} value={s._id} className={darkMode ? "bg-gray-800 text-white" : "bg-white text-gray-900"}>
                       {s.name}
                     </option>
                   ))}
@@ -2251,7 +2547,7 @@ function TeacherDashboard() {
                   onChange={(e) =>
                     setTaskForm({ ...taskForm, title: e.target.value })
                   }
-                  className={`p-3 rounded-2xl border ${darkMode ? "bg-white/10 border-white/20 text-white" : "bg-white border-blue-300 text-gray-900"}`}
+                  className={`p-3 rounded-2xl border outline-none transition-all ${darkMode ? "bg-white/10 border-white/20 text-white hover:bg-white/20 focus:ring-2 focus:ring-blue-500/50" : "bg-white border-blue-300 text-gray-900 hover:border-blue-400 focus:ring-2 focus:ring-blue-500/50"}`}
                 />
                 <input
                   type="date"
@@ -2259,7 +2555,7 @@ function TeacherDashboard() {
                   onChange={(e) =>
                     setTaskForm({ ...taskForm, dueDate: e.target.value })
                   }
-                  className={`p-3 rounded-2xl border ${darkMode ? "bg-white/10 border-white/20 text-white" : "bg-white border-blue-300 text-gray-900"}`}
+                  className={`p-3 rounded-2xl border outline-none transition-all cursor-pointer ${darkMode ? "bg-white/10 border-white/20 text-white hover:bg-white/20 focus:ring-2 focus:ring-blue-500/50" : "bg-white border-blue-300 text-gray-900 hover:border-blue-400 focus:ring-2 focus:ring-blue-500/50"}`}
                 />
               </div>
               <textarea
@@ -2269,7 +2565,7 @@ function TeacherDashboard() {
                 onChange={(e) =>
                   setTaskForm({ ...taskForm, description: e.target.value })
                 }
-                className={`w-full p-3 rounded-2xl border ${darkMode ? "bg-white/10 border-white/20 text-white" : "bg-white border-blue-300 text-gray-900"}`}
+                className={`w-full p-3 rounded-2xl border outline-none transition-all ${darkMode ? "bg-white/10 border-white/20 text-white hover:bg-white/20 focus:ring-2 focus:ring-blue-500/50" : "bg-white border-blue-300 text-gray-900 hover:border-blue-400 focus:ring-2 focus:ring-blue-500/50"}`}
               />
               <button
                 onClick={createTask}
@@ -2290,11 +2586,13 @@ function TeacherDashboard() {
                     setTaskForm({ ...taskForm, studentId: sid });
                     fetchTasks(sid);
                   }}
-                  className={`p-2 rounded-2xl border ${darkMode ? "bg-white/10 border-white/20 text-white" : "bg-white border-blue-300 text-gray-900"}`}
+                  className={`p-2 rounded-2xl border outline-none transition-all cursor-pointer ${darkMode ? "bg-white/10 border-white/20 text-white hover:bg-white/20 focus:ring-2 focus:ring-blue-500/50" : "bg-white border-blue-300 text-gray-900 hover:border-blue-400 focus:ring-2 focus:ring-blue-500/50"}`}
                 >
-                  <option value="">All students</option>
+                  <option value="" className={darkMode ? "bg-gray-800 text-white" : "bg-white text-gray-900"}>
+                    All students
+                  </option>
                   {students.map((s) => (
-                    <option key={s._id} value={s._id}>
+                    <option key={s._id} value={s._id} className={darkMode ? "bg-gray-800 text-white" : "bg-white text-gray-900"}>
                       {s.name}
                     </option>
                   ))}
@@ -2307,7 +2605,7 @@ function TeacherDashboard() {
                   placeholder="Search tasks by title..."
                   value={taskSearchTerm}
                   onChange={(e) => setTaskSearchTerm(e.target.value)}
-                  className={`p-2 rounded-2xl border ${darkMode ? "bg-white/10 border-white/20 text-white" : "bg-white border-blue-300 text-gray-900"}`}
+                  className={`p-2 rounded-2xl border outline-none transition-all ${darkMode ? "bg-white/10 border-white/20 text-white hover:bg-white/20 focus:ring-2 focus:ring-blue-500/50" : "bg-white border-blue-300 text-gray-900 hover:border-blue-400 focus:ring-2 focus:ring-blue-500/50"}`}
                 />
               </div>
 
@@ -2319,7 +2617,7 @@ function TeacherDashboard() {
                     type="date"
                     value={taskFromDate}
                     onChange={(e) => setTaskFromDate(e.target.value)}
-                    className={`p-2 rounded-2xl border ${darkMode ? "bg-white/10 border-white/20 text-white" : "bg-white border-blue-300 text-gray-900"}`}
+                    className={`p-2 rounded-2xl border outline-none transition-all cursor-pointer ${darkMode ? "bg-white/10 border-white/20 text-white hover:bg-white/20 focus:ring-2 focus:ring-blue-500/50" : "bg-white border-blue-300 text-gray-900 hover:border-blue-400 focus:ring-2 focus:ring-blue-500/50"}`}
                   />
                 </div>
                 <div className="flex items-center gap-2">
@@ -2328,7 +2626,7 @@ function TeacherDashboard() {
                     type="date"
                     value={taskToDate}
                     onChange={(e) => setTaskToDate(e.target.value)}
-                    className={`p-2 rounded-2xl border ${darkMode ? "bg-white/10 border-white/20 text-white" : "bg-white border-blue-300 text-gray-900"}`}
+                    className={`p-2 rounded-2xl border outline-none transition-all cursor-pointer ${darkMode ? "bg-white/10 border-white/20 text-white hover:bg-white/20 focus:ring-2 focus:ring-blue-500/50" : "bg-white border-blue-300 text-gray-900 hover:border-blue-400 focus:ring-2 focus:ring-blue-500/50"}`}
                   />
                 </div>
                 <div className="flex gap-2">
@@ -2340,9 +2638,10 @@ function TeacherDashboard() {
                         taskForm.studentId,
                       )
                     }
-                    className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-2xl shadow-xl transition-all flex items-center gap-2"
+                    disabled={exportingReport}
+                    className="bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white font-bold py-2 px-4 rounded-2xl shadow-xl transition-all flex items-center gap-2"
                   >
-                    <FaFilePdf /> Export Tasks & Attendance
+                    <FaFilePdf /> {exportingReport ? "Exporting..." : "Export Tasks & Attendance"}
                   </button>
                 </div>
               </div>
@@ -2365,13 +2664,13 @@ function TeacherDashboard() {
                 {tasks
                   .filter(
                     (task) =>
-                      task.title
+                      (task?.title || "")
                         .toLowerCase()
                         .includes(taskSearchTerm.toLowerCase()) ||
-                      students
+                      (students
                         .find((s) => s._id === task.studentId)
-                        ?.name.toLowerCase()
-                        .includes(taskSearchTerm.toLowerCase()),
+                        ?.name || "").toLowerCase()
+                        .includes(taskSearchTerm.toLowerCase())
                   )
                   .map((task) => (
                     <div
@@ -2399,11 +2698,21 @@ function TeacherDashboard() {
                           )}
                         </div>
                         <div className="flex items-center gap-2">
-                          {task.review?.mark && (
-                            <span className="flex items-center gap-1 text-yellow-400">
-                              <span className="text-sm">
-                                Mark: {task.review.mark}
-                              </span>
+                          {task.review?.mark !== undefined && task.review.mark !== null && (
+                            <span
+                              className={`flex items-center gap-1 font-bold px-2 py-1 rounded-lg text-sm ${
+                                task.review.mark < 35
+                                  ? "text-red-500 bg-red-500/10"
+                                  : task.review.mark < 60
+                                    ? "text-orange-500 bg-orange-500/10"
+                                    : task.review.mark < 80
+                                      ? "text-yellow-500 bg-yellow-500/10"
+                                      : task.review.mark < 100
+                                        ? "text-green-500 bg-green-500/10"
+                                        : "text-blue-500 bg-blue-500/10"
+                              }`}
+                            >
+                              Mark: {task.review.mark}
                             </span>
                           )}
                           {task.submission?.submittedAt ? (
@@ -2423,10 +2732,11 @@ function TeacherDashboard() {
                                 task.studentId,
                               )
                             }
-                            className="bg-purple-500 hover:bg-purple-600 text-white text-sm font-bold py-1 px-3 rounded-xl shadow-lg transition-all flex items-center gap-1"
+                            disabled={exportingReport}
+                            className="bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white text-sm font-bold py-1 px-3 rounded-xl shadow-lg transition-all flex items-center gap-1"
                             title={`Export ${students.find((s) => s._id === task.studentId)?.name || ""}'s tasks and attendance`}
                           >
-                            <FaFilePdf size={12} /> Export
+                            <FaFilePdf size={12} /> {exportingReport ? "Exporting..." : "Export"}
                           </button>
                         </div>
                       </div>
@@ -2543,145 +2853,210 @@ function TeacherDashboard() {
                         </div>
                       )}
 
-                      {/* Review Section */}
-                      {task.review?.feedback && (
-                        <div className="mt-2 p-2 bg-green-100 rounded text-green-800">
-                          <strong>Feedback:</strong> {task.review.feedback}
+                      {/* DISPLAY REVIEW */}
+                      {task.review && task.review.mark !== undefined && task.review.mark !== null && (
+                        <div
+                          className={`mt-3 p-3 rounded-xl border text-sm ${
+                            task.review.mark < 35
+                              ? darkMode ? "bg-red-900/20 border-red-800/30" : "bg-red-50 border-red-200"
+                              : task.review.mark < 60
+                                ? darkMode ? "bg-orange-900/20 border-orange-800/30" : "bg-orange-50 border-orange-200"
+                                : task.review.mark < 80
+                                  ? darkMode ? "bg-yellow-900/20 border-yellow-800/30" : "bg-yellow-50 border-yellow-200"
+                                  : task.review.mark < 100
+                                    ? darkMode ? "bg-green-900/20 border-green-800/30" : "bg-green-50 border-green-200"
+                                    : darkMode ? "bg-blue-900/20 border-blue-800/30" : "bg-blue-50 border-blue-200"
+                          }`}
+                        >
+                          <p
+                            className={`font-bold mb-1 ${
+                              task.review.mark < 35
+                                ? darkMode ? "text-red-400" : "text-red-700"
+                                : task.review.mark < 60
+                                  ? darkMode ? "text-orange-400" : "text-orange-700"
+                                  : task.review.mark < 80
+                                    ? darkMode ? "text-yellow-400" : "text-yellow-700"
+                                    : task.review.mark < 100
+                                      ? darkMode ? "text-green-400" : "text-green-700"
+                                      : darkMode ? "text-blue-400" : "text-blue-700"
+                            }`}
+                          >
+                            👨‍🏫 Teacher Review
+                          </p>
+                          <p className={`mb-1 ${darkMode ? "text-gray-300" : "text-gray-700"}`}>
+                            <strong>Mark:</strong> {task.review.mark}/100
+                          </p>
+                          {task.review.feedback && (
+                            <p className={darkMode ? "text-gray-300" : "text-gray-700"}>
+                              <strong>Feedback:</strong> {task.review.feedback}
+                            </p>
+                          )}
                         </div>
                       )}
 
-                      {(task.review || task.submission) && (
-                        <button
-                          onClick={() => openReview(task)}
-                          className="mt-2 text-blue-500 underline hover:text-blue-700"
-                        >
-                          {task.review ? "Update Review" : "Add Review"}
-                        </button>
+                      <div className="flex flex-col items-start gap-2 shrink-0 mt-4">
+                        {(task.review || task.submission) && (
+                          <button
+                            onClick={() => {
+                              if (reviewingTask?._id === task._id) {
+                                setReviewingTask(null);
+                              } else {
+                                openReview(task);
+                              }
+                            }}
+                            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-medium shadow-sm transition-all"
+                          >
+                            {task.review?.mark !== undefined && task.review.mark !== null ? "Edit Review" : "Review Task"}
+                          </button>
+                        )}
+                      </div>
+
+                      {reviewingTask?._id === task._id && (
+                        <div className={`mt-4 p-4 rounded-xl border ${darkMode ? "bg-black/20 border-white/10" : "bg-white border-blue-100 shadow-inner"}`}>
+                          <h5 className={`font-semibold mb-3 ${darkMode ? "text-blue-400" : "text-blue-600"}`}>
+                            {task.review?.mark !== undefined && task.review.mark !== null ? "Edit Review" : "Provide Review"}
+                          </h5>
+                          <div className="space-y-3">
+                            <div>
+                              <label className={`block text-xs font-bold mb-1 ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+                                Mark (0-100) <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                value={reviewMark}
+                                onChange={(e) => setReviewMark(e.target.value)}
+                                placeholder="e.g. 85"
+                                className={`w-full p-2.5 rounded-xl border focus:ring-2 focus:ring-blue-500 outline-none transition-all ${darkMode ? "bg-white/5 border-white/20 text-white placeholder-gray-500" : "bg-gray-50 border-gray-300 placeholder-gray-400 focus:bg-white"}`}
+                              />
+                            </div>
+                            <div>
+                              <label className={`block text-xs font-bold mb-1 ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+                                Feedback <span className="text-red-500">*</span>
+                              </label>
+                              <textarea
+                                value={reviewFeedback}
+                                onChange={(e) => setReviewFeedback(e.target.value)}
+                                placeholder="Provide constructive feedback..."
+                                rows={3}
+                                className={`w-full p-2.5 rounded-xl border focus:ring-2 focus:ring-blue-500 outline-none transition-all ${darkMode ? "bg-white/5 border-white/20 text-white placeholder-gray-500" : "bg-gray-50 border-gray-300 placeholder-gray-400 focus:bg-white"}`}
+                              />
+                            </div>
+                            <div className="flex gap-3 pt-2">
+                              <button
+                                onClick={submitReview}
+                                className="flex-1 bg-green-500 hover:bg-green-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-md transition-all"
+                              >
+                                Submit
+                              </button>
+                              <button
+                                onClick={() => setReviewingTask(null)}
+                                className="flex-1 bg-gray-500 hover:bg-gray-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-md transition-all"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        </div>
                       )}
                     </div>
                   ))}
               </div>
             )}
-
-            {/* review modal */}
-            {reviewingTask && (
-              <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-                <div
-                  className={`${darkMode ? "glass-card" : "bg-white border border-gray-200"} p-8 w-full max-w-lg rounded-3xl shadow-2xl`}
-                >
-                  <h3 className="text-2xl font-bold mb-4">
-                    Review: {reviewingTask.title}
-                  </h3>
-                  {reviewingTask.submission?.content && (
-                    <div className="mb-4">
-                      <strong>Submission:</strong>
-                      <p className="whitespace-pre-wrap">
-                        {reviewingTask.submission.content}
-                      </p>
-                    </div>
-                  )}
-                  <textarea
-                    rows={3}
-                    placeholder="Feedback (optional)"
-                    value={reviewFeedback}
-                    onChange={(e) => setReviewFeedback(e.target.value)}
-                    className="w-full p-3 rounded-2xl border mb-4"
-                  />
-                  <input
-                    type="number"
-                    placeholder="Mark (numeric)"
-                    value={reviewMark}
-                    onChange={(e) => setReviewMark(e.target.value)}
-                    className="w-full p-3 rounded-2xl border mb-4"
-                  />
-                  <div className="flex gap-4">
-                    <button
-                      onClick={submitReview}
-                      className="bg-blue-500 text-white px-6 py-3 rounded-xl"
-                    >
-                      Save
-                    </button>
-                    <button
-                      onClick={() => setReviewingTask(null)}
-                      className="bg-gray-300 px-6 py-3 rounded-xl"
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
+        )}
+          </>
         )}
 
         {/* EXAMS TAB */}
         {activeTab === "exams" && (
           <div
-            className={`backdrop-blur-xl rounded-3xl p-8 shadow-2xl border ${darkMode ? "bg-white/5 border-white/10" : "bg-white border-blue-200"}`}
+            className={`backdrop-blur-xl rounded-3xl p-8 shadow-2xl border ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-blue-200"}`}
           >
-            <div className="flex justify-between items-center mb-8">
+            <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
               <h3 className="text-3xl font-bold bg-gradient-to-r from-emerald-400 to-blue-500 bg-clip-text text-transparent">
                 Chapter Exams
               </h3>
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <label className="text-sm font-medium">Search:</label>
+              <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <label className={`text-sm font-medium ${darkMode ? "text-gray-300" : "text-gray-600"}`}>Search:</label>
                   <input
                     type="text"
-                    placeholder="Search exams by chapter..."
+                    placeholder="Search exams..."
                     value={examSearchTerm}
                     onChange={(e) => setExamSearchTerm(e.target.value)}
-                    className={`p-2 rounded-2xl border ${darkMode ? "bg-white/10 border-white/20 text-white" : "bg-white border-blue-300 text-gray-900"}`}
+                    className={`p-2.5 rounded-xl border outline-none transition-all w-full sm:w-64 ${darkMode ? "bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-blue-500/50" : "bg-gray-50 border-gray-300 text-gray-900 focus:ring-2 focus:ring-blue-500/50"}`}
                   />
                 </div>
                 <button
                   onClick={() => setShowExamModal(true)}
-                  className="bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 px-8 py-4 rounded-2xl font-bold text-lg glow shadow-2xl transition-all"
+                  className="w-full sm:w-auto bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
                 >
-                  ➕ Create Exam
+                  <FaPlus /> Create Exam
                 </button>
               </div>
             </div>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {teacherExams
-                .filter((exam) =>
-                  exam.chapter
-                    .toLowerCase()
-                    .includes(examSearchTerm.toLowerCase()),
-                )
-                .map((exam) => (
-                  <div
-                    key={exam._id}
-                    className={`p-6 rounded-3xl hover:scale-105 transition-all ${darkMode ? "glass-card" : "bg-white border border-blue-200 shadow-md"}`}
-                  >
-                    <h4 className="text-xl font-bold mb-2">{exam.chapter}</h4>
-                    <p
-                      className={`mb-4 ${darkMode ? "text-indigo-400" : "text-indigo-600"}`}
+            
+            {teacherExams.length === 0 ? (
+              <div className={`text-center py-16 ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+                <div className="text-6xl mb-4 opacity-50">📝</div>
+                <h4 className="text-xl font-semibold mb-2">No exams created yet</h4>
+                <p>Click the "Create Exam" button to get started.</p>
+              </div>
+            ) : (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {teacherExams
+                  .filter((exam) =>
+                    (exam?.chapter || "")
+                      .toLowerCase()
+                      .includes(examSearchTerm.toLowerCase()),
+                  )
+                  .map((exam) => (
+                    <div
+                      key={exam._id}
+                      className={`p-6 rounded-3xl flex flex-col justify-between hover:-translate-y-2 transition-all duration-300 shadow-lg border ${darkMode ? "bg-gray-800 border-gray-700 hover:shadow-indigo-500/20" : "bg-white border-indigo-100 hover:shadow-indigo-200"}`}
                     >
-                      {exam.questions.length} Questions
-                    </p>
-                    <p
-                      className={`text-sm mb-4 ${darkMode ? "text-gray-400" : "text-gray-600"}`}
-                    >
-                      {exam.enabledStudents.length} Students Enabled
-                    </p>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => enableStudentsForExam(exam._id)}
-                        className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-4 py-2 rounded-xl font-semibold text-sm"
-                      >
-                        Enable Students
-                      </button>
-                      <button
-                        onClick={() => openExamResults(exam)}
-                        className="bg-gradient-to-r from-purple-500 to-pink-600 text-white px-4 py-2 rounded-xl font-semibold text-sm"
-                      >
-                        View Results
-                      </button>
+                      <div>
+                        <div className="flex items-start justify-between mb-4">
+                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl ${darkMode ? "bg-indigo-900/50 text-indigo-400" : "bg-indigo-100 text-indigo-600"}`}>
+                            📝
+                          </div>
+                          <span className={`px-3 py-1 rounded-full text-xs font-bold ${exam.enabledStudents.length > 0 ? (darkMode ? "bg-green-900/30 text-green-400" : "bg-green-100 text-green-700") : (darkMode ? "bg-yellow-900/30 text-yellow-400" : "bg-yellow-100 text-yellow-700")}`}>
+                            {exam.enabledStudents.length > 0 ? 'Active' : 'Draft'}
+                          </span>
+                        </div>
+                        <h4 className={`text-xl font-bold mb-2 ${darkMode ? "text-white" : "text-gray-800"}`}>{exam.chapter}</h4>
+                        <div className={`space-y-2 mb-6 text-sm font-medium ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+                          <p className="flex items-center gap-2">
+                            <span className="text-lg">❓</span> {exam.questions.length} Questions
+                          </p>
+                          <p className="flex items-center gap-2">
+                            <span className="text-lg">🎯</span> Total Marks: {exam.questions.reduce((sum, q) => sum + (q.marks || 1), 0)}
+                          </p>
+                          <p className="flex items-center gap-2">
+                            <span className="text-lg">👥</span> {exam.enabledStudents.length} Students Enabled
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => enableStudentsForExam(exam._id)}
+                          className="flex-1 bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-semibold text-sm transition-all shadow-md hover:shadow-lg"
+                        >
+                          Manage Access
+                        </button>
+                        <button
+                          onClick={() => openExamResults(exam)}
+                          className="flex-1 bg-purple-500 hover:bg-purple-600 text-white px-4 py-2.5 rounded-xl font-semibold text-sm transition-all shadow-md hover:shadow-lg"
+                        >
+                          View Results
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
-            </div>
+                  ))}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -2690,15 +3065,15 @@ function TeacherDashboard() {
       {showExamModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div
-            className={`${darkMode ? "glass-card" : "bg-white border border-blue-200"} p-8 w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl`}
+            className={`${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-blue-200"} border p-8 w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl`}
           >
-            <div className="flex justify-between items-center mb-8">
+            <div className="flex justify-between items-center mb-8 pb-4 border-b border-gray-200 dark:border-gray-700">
               <h2 className="text-3xl font-bold bg-gradient-to-r from-indigo-400 to-purple-500 bg-clip-text text-transparent">
                 Create Chapter Exam
               </h2>
               <button
                 onClick={() => setShowExamModal(false)}
-                className="text-4xl hover:text-red-400 p-3 rounded-2xl hover:bg-white/10 transition-all"
+                className="text-4xl hover:text-red-500 transition-colors"
               >
                 ×
               </button>
@@ -2708,15 +3083,16 @@ function TeacherDashboard() {
                 <label
                   className={`block text-xl font-semibold mb-4 ${darkMode ? "text-indigo-400" : "text-indigo-600"}`}
                 >
-                  Chapter Name
+                  Chapter / Exam Name
                 </label>
                 <input
                   type="text"
+                  placeholder="e.g. HTML Basics Test"
                   value={examForm.chapter}
                   onChange={(e) =>
                     setExamForm({ ...examForm, chapter: e.target.value })
                   }
-                  className={`w-full p-6 text-xl rounded-3xl border-2 focus:ring-4 focus:ring-indigo-400/50 ${darkMode ? "bg-white/10 border-white/20" : "bg-indigo-50 border-indigo-300 text-gray-900"}`}
+                  className={`w-full p-4 text-lg rounded-2xl border-2 focus:ring-4 focus:ring-indigo-400/50 outline-none transition-all ${darkMode ? "bg-gray-900 border-gray-700 text-white placeholder-gray-500" : "bg-indigo-50 border-indigo-200 text-gray-900 placeholder-gray-400"}`}
                   required
                 />
               </div>
@@ -2725,26 +3101,45 @@ function TeacherDashboard() {
                 {examForm.questions.map((q, qIndex) => (
                   <div
                     key={qIndex}
-                    className={`p-6 rounded-3xl ${darkMode ? "glass-card" : "bg-white border border-blue-200"}`}
+                    className={`p-6 rounded-3xl border ${darkMode ? "bg-gray-900/50 border-gray-700" : "bg-white border-gray-200 shadow-sm"}`}
                   >
-                    <h4 className="font-bold text-xl mb-4">
-                      Question {qIndex + 1}
-                    </h4>
+                    <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-4 gap-4">
+                      <h4 className="font-bold text-xl flex items-center gap-2">
+                        <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm text-white ${darkMode ? "bg-indigo-500" : "bg-indigo-600"}`}>
+                          {qIndex + 1}
+                        </span>
+                        Question
+                      </h4>
+                      <div className="flex items-center gap-3 bg-gray-100 dark:bg-gray-800 p-2 rounded-xl border border-gray-200 dark:border-gray-700">
+                        <label className={`font-semibold text-sm ${darkMode ? "text-gray-300" : "text-gray-700"}`}>Marks:</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={q.marks || 1}
+                          onChange={(e) => {
+                            const newQuestions = [...examForm.questions];
+                            newQuestions[qIndex].marks = Number(e.target.value);
+                            setExamForm({ ...examForm, questions: newQuestions });
+                          }}
+                          className={`w-16 p-1.5 text-center rounded-lg border outline-none ${darkMode ? "bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-indigo-500" : "bg-white border-gray-300 text-gray-900 focus:ring-2 focus:ring-indigo-500"}`}
+                        />
+                      </div>
+                    </div>
                     <input
                       type="text"
-                      placeholder="Enter question..."
+                      placeholder="Enter the question here..."
                       value={q.question}
                       onChange={(e) => {
                         const newQuestions = [...examForm.questions];
                         newQuestions[qIndex].question = e.target.value;
                         setExamForm({ ...examForm, questions: newQuestions });
                       }}
-                      className={`w-full p-4 mb-4 rounded-2xl border ${darkMode ? "bg-white/10 border-white/20" : "bg-blue-50 border-blue-300 text-gray-900"}`}
+                      className={`w-full p-4 mb-6 rounded-2xl border outline-none transition-all focus:ring-2 focus:ring-indigo-400/50 ${darkMode ? "bg-gray-800 border-gray-700 text-white" : "bg-gray-50 border-gray-200 text-gray-900"}`}
                       required
                     />
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {q.options.map((option, oIndex) => (
-                        <div key={oIndex} className="flex items-center gap-3">
+                        <div key={oIndex} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${q.correctAnswer === oIndex ? (darkMode ? "bg-indigo-900/30 border-indigo-500" : "bg-indigo-50 border-indigo-400") : (darkMode ? "bg-gray-800 border-gray-700" : "bg-gray-50 border-gray-200")}`}>
                           <input
                             type="radio"
                             id={`q${qIndex}o${oIndex}`}
@@ -2757,17 +3152,14 @@ function TeacherDashboard() {
                                 questions: newQuestions,
                               });
                             }}
-                            className="w-5 h-5 text-indigo-600"
+                            className="w-5 h-5 text-indigo-600 cursor-pointer accent-indigo-500"
                           />
-                          <label
-                            htmlFor={`q${qIndex}o${oIndex}`}
-                            className={`flex-1 p-3 rounded-xl border ${darkMode ? "bg-white/5 border-white/20" : "bg-indigo-100 border-indigo-300"}`}
-                          >
-                            {String.fromCharCode(65 + oIndex)}.{" "}
-                            {option || `Option ${oIndex + 1}`}
-                          </label>
+                          <span className={`font-bold w-6 text-center ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+                            {String.fromCharCode(65 + oIndex)}.
+                          </span>
                           <input
                             type="text"
+                            placeholder={`Option ${oIndex + 1}`}
                             value={option}
                             onChange={(e) => {
                               const newQuestions = [...examForm.questions];
@@ -2778,53 +3170,57 @@ function TeacherDashboard() {
                                 questions: newQuestions,
                               });
                             }}
-                            className={`flex-1 p-3 rounded-xl border focus:ring-2 focus:ring-indigo-400/50 ${darkMode ? "bg-white/5 border-white/20" : "bg-indigo-50 border-indigo-300 text-gray-900"}`}
+                            className={`flex-1 p-2 rounded-lg border outline-none focus:ring-2 focus:ring-indigo-400/50 ${darkMode ? "bg-gray-700 border-gray-600 text-white" : "bg-white border-gray-300 text-gray-900"}`}
+                            required
                           />
                         </div>
                       ))}
                     </div>
                     {examForm.questions.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setExamForm((prev) => ({
-                            ...prev,
-                            questions: prev.questions.filter(
-                              (_, i) => i !== qIndex,
-                            ),
-                          }));
-                        }}
-                        className={`mt-4 text-sm ${darkMode ? "text-red-300 hover:text-red-200" : "text-red-600 hover:text-red-700"}`}
-                      >
-                        Remove Question
-                      </button>
+                      <div className="mt-6 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setExamForm((prev) => ({
+                              ...prev,
+                              questions: prev.questions.filter(
+                                (_, i) => i !== qIndex,
+                              ),
+                            }));
+                          }}
+                          className={`flex items-center gap-1 text-sm font-semibold px-4 py-2 rounded-lg transition-colors ${darkMode ? "text-red-400 hover:bg-red-500/20" : "text-red-600 hover:bg-red-50"}`}
+                        >
+                          <FaTrash size={12} /> Remove Question
+                        </button>
+                      </div>
                     )}
                   </div>
                 ))}
               </div>
 
               <div
-                className={`flex flex-col md:flex-row gap-4 mt-12 pt-8 border-t ${darkMode ? "border-white/20" : "border-blue-200"}`}
+                className={`flex flex-col md:flex-row gap-4 mt-12 pt-8 border-t ${darkMode ? "border-gray-700" : "border-gray-200"}`}
               >
                 <button
                   type="button"
                   onClick={addQuestion}
-                  className={`w-full md:w-auto px-6 py-4 rounded-2xl font-bold text-lg ${darkMode ? "bg-white/10 hover:bg-white/20" : "bg-blue-100 hover:bg-blue-200 text-gray-900"}`}
+                  className={`w-full md:w-auto px-6 py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 ${darkMode ? "bg-gray-700 hover:bg-gray-600 text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-800"}`}
                 >
-                  ➕ Add Question
+                  <FaPlus /> Add Question
                 </button>
+                <div className="flex-1"></div>
                 <button
                   type="button"
                   onClick={() => setShowExamModal(false)}
-                  className="flex-1 bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 px-8 py-4 rounded-2xl font-bold text-xl"
+                  className="px-8 py-4 rounded-2xl font-bold text-lg bg-gray-500 hover:bg-gray-600 text-white transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 px-8 py-4 rounded-2xl font-bold text-xl shadow-2xl glow transition-all"
+                  className="px-8 py-4 rounded-2xl font-bold text-lg bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transition-all"
                 >
-                  Create Exam
+                  Save Exam
                 </button>
               </div>
             </form>
@@ -2859,7 +3255,7 @@ function TeacherDashboard() {
                         );
                       }
                     }}
-                    className="w-5 h-5 text-emerald-600 rounded"
+                    className="w-6 h-6 text-emerald-600 rounded cursor-pointer accent-emerald-500 transition-transform hover:scale-110"
                   />
                   <span>
                     {student.name} - {student.courseName}
@@ -2994,7 +3390,7 @@ function TeacherDashboard() {
                     onChange={(e) =>
                       setStudentForm({ ...studentForm, email: e.target.value })
                     }
-                    className={`w-full p-3 rounded-xl border ${darkMode ? "bg-white/10 border-white/20 text-white placeholder-gray-400" : "bg-blue-50 border-blue-300 text-gray-900 placeholder-gray-600"}`}
+                    className={`w-full p-3 rounded-xl border outline-none transition-all ${darkMode ? "bg-white/10 border-white/20 text-white placeholder-gray-400 hover:bg-white/20 focus:ring-2 focus:ring-blue-500/50" : "bg-blue-50 border-blue-300 text-gray-900 placeholder-gray-600 hover:border-blue-400 focus:ring-2 focus:ring-blue-500/50"}`}
                   />
                 ) : (
                   <div
@@ -3024,7 +3420,7 @@ function TeacherDashboard() {
                           courseName: e.target.value,
                         })
                       }
-                      className={`w-full p-3 rounded-xl border ${darkMode ? "bg-white/10 border-white/20 text-white placeholder-gray-400" : "bg-blue-50 border-blue-300 text-gray-900 placeholder-gray-600"}`}
+                      className={`w-full p-3 rounded-xl border outline-none transition-all ${darkMode ? "bg-white/10 border-white/20 text-white placeholder-gray-400 hover:bg-white/20 focus:ring-2 focus:ring-blue-500/50" : "bg-blue-50 border-blue-300 text-gray-900 placeholder-gray-600 hover:border-blue-400 focus:ring-2 focus:ring-blue-500/50"}`}
                     />
                   ) : (
                     <div
@@ -3052,7 +3448,7 @@ function TeacherDashboard() {
                           batchTime: e.target.value,
                         })
                       }
-                      className={`w-full p-3 rounded-xl border ${darkMode ? "bg-white/10 border-white/20 text-white placeholder-gray-400" : "bg-blue-50 border-blue-300 text-gray-900 placeholder-gray-600"}`}
+                      className={`w-full p-3 rounded-xl border outline-none transition-all ${darkMode ? "bg-white/10 border-white/20 text-white placeholder-gray-400 hover:bg-white/20 focus:ring-2 focus:ring-blue-500/50" : "bg-blue-50 border-blue-300 text-gray-900 placeholder-gray-600 hover:border-blue-400 focus:ring-2 focus:ring-blue-500/50"}`}
                     />
                   ) : (
                     <div
@@ -3083,7 +3479,7 @@ function TeacherDashboard() {
                           personalContact: e.target.value,
                         })
                       }
-                      className={`w-full p-3 rounded-xl border ${darkMode ? "bg-white/10 border-white/20 text-white placeholder-gray-400" : "bg-blue-50 border-blue-300 text-gray-900 placeholder-gray-600"}`}
+                      className={`w-full p-3 rounded-xl border outline-none transition-all ${darkMode ? "bg-white/10 border-white/20 text-white placeholder-gray-400 hover:bg-white/20 focus:ring-2 focus:ring-blue-500/50" : "bg-blue-50 border-blue-300 text-gray-900 placeholder-gray-600 hover:border-blue-400 focus:ring-2 focus:ring-blue-500/50"}`}
                     />
                   ) : (
                     <div
@@ -3111,7 +3507,7 @@ function TeacherDashboard() {
                           parentContact: e.target.value,
                         })
                       }
-                      className={`w-full p-3 rounded-xl border ${darkMode ? "bg-white/10 border-white/20 text-white placeholder-gray-400" : "bg-blue-50 border-blue-300 text-gray-900 placeholder-gray-600"}`}
+                      className={`w-full p-3 rounded-xl border outline-none transition-all ${darkMode ? "bg-white/10 border-white/20 text-white placeholder-gray-400 hover:bg-white/20 focus:ring-2 focus:ring-blue-500/50" : "bg-blue-50 border-blue-300 text-gray-900 placeholder-gray-600 hover:border-blue-400 focus:ring-2 focus:ring-blue-500/50"}`}
                     />
                   ) : (
                     <div
@@ -3176,7 +3572,7 @@ function TeacherDashboard() {
                   onChange={(e) =>
                     setTeacherForm({ ...teacherForm, name: e.target.value })
                   }
-                  className={`w-full p-3 rounded-xl border ${darkMode ? "bg-white/10 border-white/20" : "bg-blue-50 border-blue-300 text-gray-900"}`}
+                  className={`w-full p-3 rounded-xl border outline-none transition-all ${darkMode ? "bg-white/10 border-white/20 text-white hover:bg-white/20 focus:ring-2 focus:ring-blue-500/50" : "bg-blue-50 border-blue-300 text-gray-900 hover:border-blue-400 focus:ring-2 focus:ring-blue-500/50"}`}
                 />
               </div>
               <div>
@@ -3191,7 +3587,7 @@ function TeacherDashboard() {
                   onChange={(e) =>
                     setTeacherForm({ ...teacherForm, email: e.target.value })
                   }
-                  className={`w-full p-3 rounded-xl border ${darkMode ? "bg-white/10 border-white/20" : "bg-blue-50 border-blue-300 text-gray-900"}`}
+                  className={`w-full p-3 rounded-xl border outline-none transition-all ${darkMode ? "bg-white/10 border-white/20 text-white hover:bg-white/20 focus:ring-2 focus:ring-blue-500/50" : "bg-blue-50 border-blue-300 text-gray-900 hover:border-blue-400 focus:ring-2 focus:ring-blue-500/50"}`}
                 />
               </div>
               <div>
@@ -3209,7 +3605,7 @@ function TeacherDashboard() {
                       personalContact: e.target.value,
                     })
                   }
-                  className={`w-full p-3 rounded-xl border ${darkMode ? "bg-white/10 border-white/20" : "bg-blue-50 border-blue-300 text-gray-900"}`}
+                  className={`w-full p-3 rounded-xl border outline-none transition-all ${darkMode ? "bg-white/10 border-white/20 text-white hover:bg-white/20 focus:ring-2 focus:ring-blue-500/50" : "bg-blue-50 border-blue-300 text-gray-900 hover:border-blue-400 focus:ring-2 focus:ring-blue-500/50"}`}
                 />
               </div>
             </div>
@@ -3364,7 +3760,7 @@ function TeacherDashboard() {
                                   };
                                   setAttendanceReportSlots(next);
                                 }}
-                                className="w-5 h-5 rounded"
+                                className="w-6 h-6 rounded cursor-pointer accent-emerald-500 transition-transform hover:scale-110"
                               />
                               <span className="font-semibold">{ts.slot}</span>
                             </label>

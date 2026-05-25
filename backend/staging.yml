@@ -1,0 +1,51 @@
+name: Staging CI/CD Deployment
+
+on:
+  push:
+    branches: [ staging ] # Triggers ONLY when pushing to the staging branch
+
+jobs:
+  build-and-deploy-staging:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 🚚 Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: ⚙️ Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: '**/package-lock.json'
+
+    - name: 🏗️ Build Frontend (Staging)
+      run: |
+        cd frontend
+        npm install
+        npm run build -- --mode staging
+
+    - name: 📦 Deploy to Staging VPS
+      uses: appleboy/scp-action@master
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.KEY }}
+        port: ${{ secrets.PORT || 22 }}
+        source: "frontend/dist,backend"
+        target: "/var/www/jclick-staging"
+        strip_components: 1
+
+    - name: 🚀 Restart Staging Application on VPS
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.KEY }}
+        port: ${{ secrets.PORT || 22 }}
+        script: |
+          cd /var/www/jclick-staging/backend
+          docker build -t jclick-backend-staging .
+          docker stop jclick-backend-staging-container || true
+          docker rm jclick-backend-staging-container || true
+          docker run -d --name jclick-backend-staging-container -p 5001:5000 --restart unless-stopped -e NODE_ENV=staging --env-file .env.staging -v $(pwd)/uploads:/usr/src/app/uploads -v $(pwd)/logs:/usr/src/app/logs jclick-backend-staging

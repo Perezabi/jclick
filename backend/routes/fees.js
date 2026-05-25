@@ -1,9 +1,15 @@
 const router = require("express").Router();
 const Fee = require("../models/Fee");
 const auth = require("../middleware/auth");
+const { body, param } = require("express-validator");
+const validate = require("../middleware/validate");
 
 // PAYMENT
-router.post("/pay/:id", auth, async (req, res) => {
+router.post("/pay/:id", auth, [
+  param('id').isMongoId().withMessage('Invalid Fee ID'),
+  body('amount').isFloat({ min: 1, max: 1000000 }).withMessage('Amount must be between 1 and 1,000,000'),
+  body('paymentMode').trim().isIn(['Cash', 'Card', 'UPI', 'Bank Transfer', 'Cheque', 'Online']).withMessage('Invalid payment mode selected')
+], validate, async (req, res) => {
   try {
     const { amount, paymentMode } = req.body;
     const fee = await Fee.findById(req.params.id);
@@ -26,7 +32,9 @@ router.post("/pay/:id", auth, async (req, res) => {
 });
 
 // RECEIPT PDF
-router.get("/receipt/:id", auth, async (req, res) => {
+router.get("/receipt/:id", auth, [
+  param('id').isMongoId().withMessage('Invalid Fee ID')
+], validate, async (req, res) => {
   try {
     const Fee = require("../models/Fee");
     const fee = await Fee.findById(req.params.id)

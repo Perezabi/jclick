@@ -2,8 +2,12 @@ const router = require("express").Router();
 const PDFDocument = require("pdfkit");
 const User = require("../models/User");
 const auth = require("../middleware/auth");
+const { param } = require("express-validator");
+const validate = require("../middleware/validate");
 
-router.get("/:studentId", auth, async (req, res) => {
+router.get("/:studentId", auth, [
+  param('studentId').isMongoId().withMessage('Invalid Student ID')
+], validate, async (req, res) => {
   try {
     const student = await User.findById(req.params.studentId);
 
